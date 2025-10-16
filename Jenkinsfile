@@ -1,4 +1,5 @@
 // Jenkinsfile for the CineReads Full-Stack Application
+// Updated to include frontend deployment - Build #10
 
 pipeline {
     agent any
