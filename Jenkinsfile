@@ -4,6 +4,10 @@
 pipeline {
     agent any
 
+    triggers {
+        pollSCM('H/5 * * * *') // Poll every 5 minutes
+    }
+
     environment {
         AWS_REGION      = "ap-south-1"
         ECR_REGISTRY    = "622310271659.dkr.ecr.ap-south-1.amazonaws.com"

@@ -142,3 +142,61 @@ async def health_check():
         "render_deployment": bool(os.getenv("RENDER_EXTERNAL_URL")),
         "message": "CineReads API is running and healthy! 🚀"
     }
+
+@app.post("/deploy/frontend")
+async def deploy_frontend(request: Request):
+    """
+    Deploy the frontend container. Requires deployment secret.
+    """
+    import os
+    
+    # Check for deployment secret
+    auth_header = request.headers.get("Authorization")
+    expected_secret = os.getenv("DEPLOYMENT_SECRET", "cinereads-deploy-2024")
+    
+    if not auth_header or auth_header != f"Bearer {expected_secret}":
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid deployment secret"}
+        )
+    
+    import subprocess
+    
+    try:
+        # Stop existing frontend container
+        subprocess.run(["docker", "stop", "cinereads-frontend-app"], capture_output=True, timeout=30)
+        subprocess.run(["docker", "rm", "cinereads-frontend-app"], capture_output=True, timeout=30)
+        
+        # Run new frontend container
+        result = subprocess.run([
+            "docker", "run", "-d", "--name", "cinereads-frontend-app", 
+            "-p", "3000:3000", 
+            "622310271659.dkr.ecr.ap-south-1.amazonaws.com/cinereads-frontend:latest"
+        ], capture_output=True, text=True, timeout=60)
+        
+        if result.returncode == 0:
+            return {
+                "status": "success",
+                "message": "Frontend deployed successfully",
+                "container_id": result.stdout.strip()
+            }
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error", 
+                    "message": "Failed to deploy frontend",
+                    "error": result.stderr
+                }
+            )
+            
+    except subprocess.TimeoutExpired:
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": "Deployment timed out"}
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": f"Deployment failed: {str(e)}"}
+        )
