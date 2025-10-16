@@ -33,7 +33,7 @@ pipeline {
                 echo "Building Docker image: ${ECR_REPOSITORY}:${IMAGE_TAG}"
                 // The Docker Pipeline plugin provides this 'docker.build()' command.
                 script {
-                    docker.build("${ECR_REPOSITORY}:${IMAGE_TAG}", ".")
+                    docker.build("${ECR_REPOSITORY}:${IMAGE_TAG}", "backend")
                 }
             }
         }
