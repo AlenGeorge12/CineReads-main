@@ -4,3 +4,5 @@ requests
 pytest
 boto3
 aiohttp
+fastapi
+uvicorn[standard]
