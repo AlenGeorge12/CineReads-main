@@ -6,7 +6,7 @@ pipeline {
 
     // 2. Environment Variables: Define variables that will be used throughout the pipeline.
     environment {
-        // Fetch these values from your tf_outputs.json file
+        // Values from your tf_outputs.json file
         AWS_REGION      = "ap-south-1"
         ECR_REGISTRY    = "622310271659.dkr.ecr.ap-south-1.amazonaws.com"
         ECR_REPOSITORY  = "cinereads-backend"
@@ -22,7 +22,7 @@ pipeline {
             steps {
                 echo 'Checking out code from Git...'
                 // This command is built-in and uses the Git plugin.
-                git branch: 'main', url: 'https://github.com/your-username/CineReads-main.git'
+                git branch: 'main', url: 'https://github.com/AlenGeorge12/CineReads-main.git'
                 // If your repo is private, you would add: credentialsId: 'github-pat'
             }
         }
