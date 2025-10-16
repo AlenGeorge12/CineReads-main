@@ -1,0 +1,17 @@
+{
+  "ecr_repo_url": {
+    "sensitive": false,
+    "type": "string",
+    "value": "622310271659.dkr.ecr.ap-south-1.amazonaws.com/cinereads-backend"
+  },
+  "jenkins_public_ip": {
+    "sensitive": false,
+    "type": "string",
+    "value": "13.127.212.77"
+  },
+  "s3_cache_bucket": {
+    "sensitive": false,
+    "type": "string",
+    "value": "cinereads-cache-a07540f6"
+  }
+}

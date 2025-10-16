@@ -1,0 +1,6 @@
+httpx
+httpx[http2]
+requests
+pytest
+boto3
+aiohttp

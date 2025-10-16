@@ -1,0 +1,46 @@
+# docker-compose.yml
+
+# Specifies the version of the Docker Compose file format. '3.8' is a good modern choice.
+version: '3.8'
+
+# This is the main section where we define our individual services (containers).
+services:
+  # This is the service for our Python backend. We can name it whatever we want.
+  backend:
+    # Tells Docker Compose to build the image from the Dockerfile located in the './backend' directory.
+    build: ./backend
+    # This overrides the CMD in the backend Dockerfile to include --reload.
+    # Now, when you save a .py file, the server will restart automatically.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # This maps port 8000 on your local machine to port 8000 inside the container.
+    # Format is "HOST_PORT:CONTAINER_PORT".
+    ports:
+      - "8000:8000"
+    # This is the magic for live reloading. It syncs your local './backend' folder
+    # with the '/app' folder inside the container. Any code changes you make locally
+    # will instantly appear inside the container.
+    volumes:
+      - ./backend:/app
+    # This section is for defining environment variables, like API keys.
+    # You would create a .env file in this same root directory to store them securely.
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+  # This is the service for our Next.js frontend.
+  frontend:
+    # Tells Docker Compose to build the image from the Dockerfile located in the './frontend' directory.
+    build: ./frontend
+    # Maps port 3000 on your local machine to port 3000 inside the container.
+    ports:
+      - "3000:3000"
+    # Sets up live reloading for the frontend.
+    volumes:
+      # Syncs your local './frontend' folder with the '/app' folder in the container.
+      - ./frontend:/app
+      # This is an important optimization. It tells Docker *not* to sync the node_modules folder.
+      # The container will use the one it installed during the build, which is faster and more reliable.
+      - /app/node_modules
+    # This is crucial. It tells Docker Compose to start and wait for the 'backend' service
+    # to be healthy before it even starts the 'frontend' service.
+    depends_on:
+      - backend

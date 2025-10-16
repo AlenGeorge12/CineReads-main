@@ -1,0 +1,177 @@
+---
+- name: Provision Jenkins server for CineReads
+  hosts: jenkins
+  become: yes
+  vars:
+    jenkins_port: 8080
+    jenkins_key_url: "https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key"
+    jenkins_keyring: "/usr/share/keyrings/jenkins-keyring.gpg"
+    jenkins_repo_file: "/etc/apt/sources.list.d/jenkins.list"
+
+  tasks:
+
+  - name: Ensure apt cache is up to date
+    apt:
+      update_cache: yes
+      cache_valid_time: 3600
+
+  - name: Install common packages
+    apt:
+      name:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - gnupg
+        - lsb-release
+        - software-properties-common
+        - unzip
+        - git
+        - pwgen
+      state: present
+
+  - name: Install OpenJDK 17
+    apt:
+      name: openjdk-17-jre-headless
+      state: present
+
+  # ---------------------
+  # Jenkins key & repo (robust multi-key fix)
+  # ---------------------
+
+  - name: Ensure keyrings dir exists
+    file:
+      path: /usr/share/keyrings
+      state: directory
+      owner: root
+      group: root
+      mode: 0755
+
+  - name: Download CURRENT Jenkins GPG key (jenkins.io-2023.key)
+    get_url:
+      url: "https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key"
+      dest: /tmp/jenkins.io-2023.key
+      mode: '0644'
+
+  - name: Download LEGACY Jenkins GPG key (jenkins.io.key) for older signatures
+    get_url:
+      url: "https://pkg.jenkins.io/debian-stable/jenkins.io.key"
+      dest: /tmp/jenkins.io.key
+      mode: '0644'
+
+  - name: Combine both GPG keys and dearmor into the final keyring
+    shell: >
+      cat /tmp/jenkins.io-2023.key /tmp/jenkins.io.key | gpg --batch --yes --dearmor -o {{ jenkins_keyring }}
+    args:
+      creates: "{{ jenkins_keyring }}" # This makes the task idempotent
+    notify: ensure permissions on keyring
+
+  - name: Ensure correct owner/permissions on keyring
+    file:
+      path: "{{ jenkins_keyring }}"
+      owner: root
+      group: root
+      mode: '0644'
+
+  - name: Add Jenkins apt repository list file (signed-by)
+    copy:
+      dest: "{{ jenkins_repo_file }}"
+      content: "deb [signed-by={{ jenkins_keyring }}] https://pkg.jenkins.io/debian-stable binary/\n"
+      owner: root
+      group: root
+      mode: '0644'
+    register: wrote_repo
+
+  - name: Wait a short moment for local apt caches to settle
+    pause:
+      seconds: 1
+    when: wrote_repo is changed
+
+  - name: apt update (after adding repo) - try a couple times for transient network
+    apt:
+      update_cache: yes
+      cache_valid_time: 0
+    register: apt_update_result
+    retries: 3
+    delay: 3
+    until: apt_update_result is succeeded
+
+  # ---------------------
+  # Jenkins install
+  # ---------------------
+
+  - name: Install Jenkins
+    apt:
+      name: jenkins
+      state: present
+      update_cache: yes
+
+  - name: Install Docker (official)
+    shell: |
+      set -e
+      if ! command -v docker >/dev/null 2>&1; then
+        curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+        sh /tmp/get-docker.sh
+      fi
+    args:
+      creates: /usr/bin/docker
+
+  - name: Ensure docker-compose (v2 shim) is available via apt plugin (optional)
+    apt:
+      name: docker-compose-plugin
+      state: present
+
+  - name: Add ubuntu user to docker group
+    user:
+      name: ubuntu
+      groups: docker
+      append: yes
+
+  - name: Ensure AWS CLI v2 is installed
+    shell: |
+      set -e
+      if ! command -v aws >/dev/null 2>&1; then
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+        unzip -q /tmp/awscliv2.zip -d /tmp
+        /tmp/aws/install --update
+      fi
+    args:
+      creates: /usr/local/bin/aws
+
+  - name: Start and enable Docker
+    systemd:
+      name: docker
+      state: started
+      enabled: yes
+
+  - name: Start and enable Jenkins
+    systemd:
+      name: jenkins
+      state: started
+      enabled: yes
+
+  - name: Ensure UFW disabled (avoid accidental port block)
+    shell: |
+      if command -v ufw >/dev/null 2>&1; then
+        ufw --force disable || true
+      fi
+    args:
+      warn: false
+
+  - name: Create a directory for CineReads and pull repo (if network access allowed)
+    git:
+      repo: 'https://github.com/your-org/CineReads-main.git'
+      dest: /opt/cinereads
+    register: repo_result
+    ignore_errors: yes
+
+  - name: Print Jenkins initial admin password location
+    debug:
+      msg: "Jenkins initial password: /var/lib/jenkins/secrets/initialAdminPassword (use sudo cat to read)"
+
+  handlers:
+    - name: ensure permissions on keyring
+      file:
+        path: "{{ jenkins_keyring }}"
+        owner: root
+        group: root
+        mode: '0644'
