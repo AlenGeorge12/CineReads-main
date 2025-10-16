@@ -1,5 +1,9 @@
-output "ecr_repo_url" {
+output "backend_ecr_repo_url" {
   value = aws_ecr_repository.backend.repository_url
+}
+
+output "frontend_ecr_repo_url" {
+  value = aws_ecr_repository.frontend.repository_url
 }
 
 output "s3_cache_bucket" {

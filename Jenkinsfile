@@ -1,4 +1,4 @@
-// Jenkinsfile for the CineReads Backend
+// Jenkinsfile for the CineReads Full-Stack Application
 
 pipeline {
     agent any
@@ -6,9 +6,11 @@ pipeline {
     environment {
         AWS_REGION      = "ap-south-1"
         ECR_REGISTRY    = "622310271659.dkr.ecr.ap-south-1.amazonaws.com"
-        ECR_REPOSITORY  = "cinereads-backend"
+        BACKEND_ECR_REPOSITORY  = "cinereads-backend"
+        FRONTEND_ECR_REPOSITORY = "cinereads-frontend"
         IMAGE_TAG       = "v${env.BUILD_NUMBER}"
-        APP_CONTAINER_NAME = "cinereads-backend-app" // A name for our running container
+        BACKEND_CONTAINER_NAME = "cinereads-backend-app"
+        FRONTEND_CONTAINER_NAME = "cinereads-frontend-app"
     }
 
     stages {
@@ -19,42 +21,63 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Backend Docker Image') {
             steps {
-                echo "Building Docker image: ${ECR_REPOSITORY}:${IMAGE_TAG}"
+                echo "Building backend Docker image: ${BACKEND_ECR_REPOSITORY}:${IMAGE_TAG}"
                 script {
-                    docker.build("${ECR_REPOSITORY}:${IMAGE_TAG}", "backend")
+                    docker.build("${BACKEND_ECR_REPOSITORY}:${IMAGE_TAG}", "backend")
                 }
             }
         }
 
-        stage('Push Image to ECR') {
+        stage('Build Frontend Docker Image') {
             steps {
-                echo "Logging into ECR and pushing image..."
+                echo "Building frontend Docker image: ${FRONTEND_ECR_REPOSITORY}:${IMAGE_TAG}"
+                script {
+                    docker.build("${FRONTEND_ECR_REPOSITORY}:${IMAGE_TAG}", "frontend")
+                }
+            }
+        }
+
+        stage('Push Images to ECR') {
+            steps {
+                echo "Logging into ECR and pushing images..."
                 withCredentials([aws(credentialsId: 'aws-ecr-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
-                    sh "docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
-                    sh "docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
-                    sh "docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
-                    sh "docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+
+                    // Push backend images
+                    sh "docker tag ${BACKEND_ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${BACKEND_ECR_REPOSITORY}:${IMAGE_TAG}"
+                    sh "docker tag ${BACKEND_ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${BACKEND_ECR_REPOSITORY}:latest"
+                    sh "docker push ${ECR_REGISTRY}/${BACKEND_ECR_REPOSITORY}:${IMAGE_TAG}"
+                    sh "docker push ${ECR_REGISTRY}/${BACKEND_ECR_REPOSITORY}:latest"
+
+                    // Push frontend images
+                    sh "docker tag ${FRONTEND_ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${FRONTEND_ECR_REPOSITORY}:${IMAGE_TAG}"
+                    sh "docker tag ${FRONTEND_ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${FRONTEND_ECR_REPOSITORY}:latest"
+                    sh "docker push ${ECR_REGISTRY}/${FRONTEND_ECR_REPOSITORY}:${IMAGE_TAG}"
+                    sh "docker push ${ECR_REGISTRY}/${FRONTEND_ECR_REPOSITORY}:latest"
                 }
             }
         }
 
-        // --- NEW STAGE ADDED HERE ---
-        stage('Deploy to EC2') {
+        stage('Deploy Backend to EC2') {
             steps {
                 echo "Deploying the latest backend container..."
                 script {
-                    // Stop and remove the old container if it exists, to avoid port conflicts.
-                    // '|| true' ensures the command doesn't fail if the container isn't running.
-                    sh "docker stop ${APP_CONTAINER_NAME} || true"
-                    sh "docker rm ${APP_CONTAINER_NAME} || true"
+                    sh "docker stop ${BACKEND_CONTAINER_NAME} || true"
+                    sh "docker rm ${BACKEND_CONTAINER_NAME} || true"
+                    sh "docker run -d --name ${BACKEND_CONTAINER_NAME} -p 8000:8000 -e OPENAI_API_KEY=placeholder -e HARDCOVER_API_KEY=placeholder ${ECR_REGISTRY}/${BACKEND_ECR_REPOSITORY}:latest"
+                }
+            }
+        }
 
-                    // Run the new container from the 'latest' image we pushed to ECR.
-                    // -d runs it in detached mode (in the background).
-                    // -p 8000:8000 maps the EC2's port 8000 to the container's port 8000.
-                    sh "docker run -d --name ${APP_CONTAINER_NAME} -p 8000:8000 ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+        stage('Deploy Frontend to EC2') {
+            steps {
+                echo "Deploying the latest frontend container..."
+                script {
+                    sh "docker stop ${FRONTEND_CONTAINER_NAME} || true"
+                    sh "docker rm ${FRONTEND_CONTAINER_NAME} || true"
+                    sh "docker run -d --name ${FRONTEND_CONTAINER_NAME} -p 3000:3000 ${ECR_REGISTRY}/${FRONTEND_ECR_REPOSITORY}:latest"
                 }
             }
         }
