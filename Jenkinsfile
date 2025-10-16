@@ -39,18 +39,23 @@ pipeline {
         }
 
         // STAGE 3: Push Image to ECR - Authenticates with AWS and pushes the image.
+        // STAGE 3: Push Image to ECR (NEW AND IMPROVED VERSION)
         stage('Push Image to ECR') {
             steps {
-                echo "Pushing image to ECR..."
-                // This is the most important step.
-                // It uses the AWS Credentials (aws-ecr-credentials) we configured in Jenkins.
-                script {
-                    docker.withRegistry("https://${ECR_REGISTRY}", 'aws-ecr-credentials') {
-                        docker.image("${ECR_REPOSITORY}:${IMAGE_TAG}").push()
+                echo "Logging into ECR and pushing image..."
+                // Use the withCredentials step to securely load the AWS keys into environment variables
+                withCredentials([aws(credentialsId: 'aws-ecr-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    
+                    // 1. Login to ECR using the AWS CLI. This is the most reliable method.
+                    sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
 
-                        // Also push a 'latest' tag for convenience
-                        docker.image("${ECR_REPOSITORY}:${IMAGE_TAG}").push('latest')
-                    }
+                    // 2. Tag the image with the full ECR path before pushing.
+                    sh "docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+                    sh "docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+
+                    // 3. Push both the version tag and the 'latest' tag to ECR.
+                    sh "docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+                    sh "docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
                 }
             }
         }
